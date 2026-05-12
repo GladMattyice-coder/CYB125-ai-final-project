@@ -32,7 +32,7 @@ named like baseline_HOSTNAME_YYYYMMDDTHHMMSSZ.json
 
 import json
 import time
-import datetime
+#import datetime
 import socket
 import sys
 
@@ -120,8 +120,8 @@ def main():
 
     # Build the output filename: baseline_HOSTNAME_TIMESTAMP.json
     hostname = socket.gethostname()
-    timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    output_filename = "baseline_" + hostname + "_" + timestamp + ".json"
+    #timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    output_filename = "baseline_" + hostname + "_" + ".json"
 
     # Save the snapshot to a JSON file. The default=str argument is a
     # safety net — if any field somehow holds a value that JSON doesn't

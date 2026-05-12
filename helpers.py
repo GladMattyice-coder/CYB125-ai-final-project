@@ -175,7 +175,7 @@ def get_snapshot_metadata(snapshot):
             is_admin = False
 
         info["schema_version"] = "1.0"
-        info["timestamp_utc"] = datetime.datetime.utcnow().isoformat() + "Z"
+        #info["timestamp_utc"] = datetime.datetime.utcnow().isoformat() + "Z"
         info["hostname"] = socket.gethostname()
         info["generated_by_user"] = getpass.getuser()
         info["elevated"] = is_admin
@@ -235,30 +235,33 @@ def get_snapshot_metadata(snapshot):
 def get_system_identity(snapshot):
     info = {}
     try:
-        # Define the common registry hive and key for system identity values.
+        # Use HKLM because the OS identity values are stored under the local
+        # machine hive, not the current user hive.
         hive = winreg.HKEY_LOCAL_MACHINE
         subkey = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
 
-        # Read the product name string, e.g. "Windows 11 Enterprise".
+        # ProductName gives the human-readable Windows edition name.
         info["os_name"] = get_registry_value(hive, subkey, "ProductName")
 
-        # Read the build number string, e.g. "22631".
+        # CurrentBuild is the OS build number string.
         info["os_build"] = get_registry_value(hive, subkey, "CurrentBuild")
 
-        # Read the edition string, e.g. "Enterprise" or "Professional".
+        # EditionID tells us the Windows edition type like Enterprise.
         info["os_edition"] = get_registry_value(hive, subkey, "EditionID")
 
-        # Read the registered owner string from the Windows registry.
+        # RegisteredOwner is the owner name written during Windows setup.
         info["registered_owner"] = get_registry_value(hive, subkey, "RegisteredOwner")
 
-        # Read InstallDate as a Unix epoch integer from the registry.
+        # InstallDate is stored as a Unix epoch integer in the registry.
         install_epoch = get_registry_value(hive, subkey, "InstallDate")
         if install_epoch is not None:
-            # Convert epoch seconds to ISO 8601 UTC with a Z suffix.
-            # Deliberate choice: ISO format is human-readable and common in JSON.
+            # Convert epoch seconds to a readable UTC timestamp string.
+            # Deliberate choice: ISO 8601 with a trailing Z is easy to read,
+            # parse, and compare across systems.
+            # You could also choose a different string format if desired.
             info["install_date_utc"] = datetime.datetime.utcfromtimestamp(install_epoch).isoformat() + "Z"
         else:
-            # Leave the field as None when the registry value is missing.
+            # Keep the JSON field explicit when the registry value is missing.
             info["install_date_utc"] = None
     except Exception as e:
         add_warning(snapshot, "system_identity failed: " + str(e))
@@ -902,7 +905,7 @@ def get_security_posture(snapshot):
 
 def get_performance_snapshot(snapshot):
     info = {
-        "sample_timestamp_utc": datetime.datetime.utcnow().isoformat() + "Z",
+        #"sample_timestamp_utc": datetime.datetime.utcnow().isoformat() + "Z",
         "cpu_total_percent": None,
         "memory": {"available_bytes": None},
         "disk_system_volume": {"reads_per_sec": None, "writes_per_sec": None},
