@@ -307,10 +307,62 @@ def get_system_identity(snapshot):
 def get_password_policy(snapshot):
     info = {}
     try:
-        # TODO Milestone 3: parse `net accounts` and populate the 7 fields
-        # listed in the comment block above. Use run_command() to invoke
-        # the command, then walk its output line by line.
-        pass
+        # Run the Windows command once and capture its output as text.
+        output = run_command(["net", "accounts"])
+
+        # Helper to convert the command output value to int or None.
+        # We want integers in JSON, and None when the source says "Never".
+        def parse_value(value_text):
+            # Strip whitespace so "  42  " becomes "42" and "Never" is exact.
+            cleaned = value_text.strip()
+            # Treat any case of "Never" as missing data rather than a string.
+            if cleaned.lower() == "never":
+                return None
+            try:
+                # Convert numeric strings to int; non-numbers become None.
+                return int(cleaned)
+            except ValueError:
+                # If parsing fails, return None instead of letting an exception crash the collector.
+                return None
+
+        # Walk the output line-by-line and parse label/value pairs.
+        for line in output.splitlines():
+            # Skip any line that does not contain a label/value separator.
+            if ":" not in line:
+                continue
+            label, value = line.split(":", 1)
+            label = label.strip()
+            value = value.strip()
+
+            # Match each relevant label to the expected JSON field name.
+            if label == "Minimum password length":
+                info["minimum_password_length"] = parse_value(value)
+            elif label == "Minimum password age (days)":
+                info["minimum_password_age_days"] = parse_value(value)
+            elif label == "Maximum password age (days)":
+                info["maximum_password_age_days"] = parse_value(value)
+            elif label == "Length of password history maintained":
+                info["password_history_length"] = parse_value(value)
+            elif label == "Lockout threshold":
+                info["lockout_threshold"] = parse_value(value)
+            elif label == "Lockout duration (minutes)":
+                info["lockout_duration_minutes"] = parse_value(value)
+            elif label == "Lockout observation window (minutes)":
+                info["lockout_observation_window_minutes"] = parse_value(value)
+
+        # Ensure all required fields exist in the returned dict even if the output changed.
+        required_fields = [
+            "minimum_password_length",
+            "minimum_password_age_days",
+            "maximum_password_age_days",
+            "password_history_length",
+            "lockout_threshold",
+            "lockout_duration_minutes",
+            "lockout_observation_window_minutes",
+        ]
+        for field in required_fields:
+            if field not in info:
+                info[field] = None
     except Exception as e:
         add_warning(snapshot, "password_policy failed: " + str(e))
     return info
