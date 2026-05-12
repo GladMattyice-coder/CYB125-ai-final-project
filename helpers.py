@@ -408,9 +408,54 @@ def get_password_policy(snapshot):
 def get_installed_software(snapshot):
     software = []
     try:
-        # TODO Milestone 4: walk the Uninstall hive and append a dict
-        # for each program with a DisplayName.
-        pass
+        # The registry key that contains uninstall metadata for installed programs.
+        hive = winreg.HKEY_LOCAL_MACHINE
+        base_key = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+
+        # Open the parent uninstall key once and enumerate its child subkeys.
+        uninstall_key = winreg.OpenKey(hive, base_key)
+
+        index = 0
+        while True:
+            try:
+                # winreg.EnumKey returns the name of the subkey at the given index.
+                # It raises OSError when no more subkeys exist, so use that to stop.
+                subkey_name = winreg.EnumKey(uninstall_key, index)
+            except OSError:
+                break
+            index += 1
+
+            # Build the full path for the specific application entry.
+            full_path = base_key + "\\" + subkey_name
+
+            # Read the display name; if it is missing, skip this subkey entirely.
+            display_name = get_registry_value(hive, full_path, "DisplayName")
+            if not display_name:
+                continue
+
+            # Read the optional metadata values for the item.
+            display_version = get_registry_value(hive, full_path, "DisplayVersion")
+            publisher = get_registry_value(hive, full_path, "Publisher")
+            install_date_raw = get_registry_value(hive, full_path, "InstallDate")
+
+            # Convert InstallDate from YYYYMMDD to YYYY-MM-DD if present.
+            # This is a deliberate choice because the registry already gives a
+            # date-like string; we could also parse it with datetime.strptime.
+            if isinstance(install_date_raw, str) and len(install_date_raw) == 8 and install_date_raw.isdigit():
+                install_date = f"{install_date_raw[0:4]}-{install_date_raw[4:6]}-{install_date_raw[6:8]}"
+            else:
+                # Leave the field as None when InstallDate is missing or malformed.
+                install_date = None
+
+            software.append({
+                "display_name": display_name,
+                "display_version": display_version,
+                "publisher": publisher,
+                "install_date": install_date,
+            })
+
+        # Close the registry handle when we are done enumerating.
+        winreg.CloseKey(uninstall_key)
     except Exception as e:
         add_warning(snapshot, "installed_software failed: " + str(e))
     return software
@@ -458,10 +503,52 @@ def get_installed_software(snapshot):
 
 def add_running_processes(snapshot):
     try:
-        # TODO Milestone 5: parse `tasklist /fo csv` and append one dict
-        # per process to snapshot["running_processes"].
-        # Remember: this function does NOT return anything.
-        pass
+        # Run tasklist with CSV output format to get all processes on the system.
+        output = run_command(["tasklist", "/fo", "csv"])
+
+        # Parse the CSV output using Python's csv module for proper quote handling.
+        reader = csv.reader(output.splitlines())
+
+        # Track whether we have seen the header row yet.
+        # This is a deliberate choice; we could also check if row[0] == "Image Name".
+        header_skipped = False
+
+        for row in reader:
+            # Skip the first row, which contains column headers.
+            if not header_skipped:
+                header_skipped = True
+                continue
+
+            # Ensure the row has at least 2 columns (name and PID).
+            if len(row) < 2:
+                continue
+
+            process_name = row[0].strip()
+            pid_string = row[1].strip()
+
+            # Convert the PID from string to integer; wrap in try/except because
+            # tasklist output might occasionally contain a malformed PID that cannot be parsed.
+            try:
+                pid = int(pid_string)
+            except ValueError:
+                # Skip this row if the PID cannot be converted to int.
+                continue
+
+            # Build the process dict with the fields available from tasklist.
+            # parent_pid, executable_path, and command_line are not available from tasklist
+            # but are part of the snapshot schema, so they are set to None here.
+            # A future milestone could use wmi.Win32_Process or similar to fill those in.
+            process_entry = {
+                "pid": pid,
+                "name": process_name,
+                "parent_pid": None,
+                "executable_path": None,
+                "command_line": None,
+            }
+
+            # Append the completed entry directly to the snapshot's running_processes list.
+            # This is the mutator pattern: we modify snapshot in place, returning nothing.
+            snapshot["running_processes"].append(process_entry)
     except Exception as e:
         add_warning(snapshot, "running_processes failed: " + str(e))
 
